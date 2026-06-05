@@ -3,6 +3,9 @@ using CodexTrafficLight.Core.Services;
 
 namespace CodexTrafficLight.Tests;
 
+/// <summary>
+/// 覆盖 hook 安装行为和生成脚本内容。
+/// </summary>
 public sealed class CodexHookInstallerTests
 {
     [Fact]
@@ -93,14 +96,31 @@ public sealed class CodexHookInstallerTests
         Assert.Contains("rawHookInput", script);
     }
 
+    [Fact]
+    public void HookScriptCanAutoLaunchAppWhenCodexActivityStarts()
+    {
+        var root = CreateTempRoot();
+        var paths = new CodexPaths(root);
+
+        new CodexHookInstaller(paths).InstallOrUpdate();
+
+        var script = File.ReadAllText(paths.HookScriptPath);
+        Assert.Contains("AutoLaunchOnCodexActivity", script);
+        Assert.Contains(paths.SettingsPath, script);
+        Assert.Contains("CodexTrafficLight.App.exe", script);
+        Assert.Contains("Start-Process", script);
+    }
+
     private static string NormalizeJson(string json)
     {
+        // 格式无关紧要；通过规范化 JSON 比较幂等性。
         using var doc = JsonDocument.Parse(json);
         return JsonSerializer.Serialize(doc.RootElement);
     }
 
     private static string CreateTempRoot()
     {
+        // 将 hook 写入隔离开，避免影响开发者真实 Codex 配置。
         var path = Path.Combine(Path.GetTempPath(), "CodexTrafficLightTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;

@@ -3,6 +3,9 @@ using CodexTrafficLight.Core.Services;
 
 namespace CodexTrafficLight.Tests;
 
+/// <summary>
+/// 验证会话的可见性、保留时间、分组和聚合状态规则。
+/// </summary>
 public sealed class SessionStatusStoreTests
 {
     [Fact]
@@ -115,6 +118,33 @@ public sealed class SessionStatusStoreTests
     }
 
     [Fact]
+    public void LoadVisibleSessionsUsesCustomRetentionOptions()
+    {
+        var paths = new CodexPaths(CreateTempRoot());
+        var store = new SessionStatusStore(paths, _ => false);
+        var now = DateTimeOffset.Parse("2026-06-01T15:10:00+08:00");
+        var options = new SessionRetentionOptions
+        {
+            GreenRetention = TimeSpan.FromMinutes(8),
+            YellowRetention = TimeSpan.FromMinutes(9),
+            RedRetention = TimeSpan.FromMinutes(12),
+            LiveCliWorkRetention = TimeSpan.FromHours(1),
+            LiveVsCodePluginWorkRetention = TimeSpan.FromHours(1)
+        };
+
+        store.Write(CreateSession("custom-green", CodexLightState.Green, @"F:\Green", now.AddMinutes(-7)));
+        store.Write(CreateSession("custom-yellow", CodexLightState.Yellow, @"F:\Yellow", now.AddMinutes(-8)));
+        store.Write(CreateSession("custom-red", CodexLightState.Red, @"F:\Red", now.AddMinutes(-11)));
+
+        var sessions = store.LoadSessions(includeEnded: false, options, now);
+
+        Assert.Equal(3, sessions.Count);
+        Assert.Contains(sessions, session => session.SessionId == "custom-green");
+        Assert.Contains(sessions, session => session.SessionId == "custom-yellow");
+        Assert.Contains(sessions, session => session.SessionId == "custom-red");
+    }
+
+    [Fact]
     public void LoadVisibleSessionsKeepsStaleRedAndYellowSessionsWhenProcessIsStillRunning()
     {
         var paths = new CodexPaths(CreateTempRoot());
@@ -180,6 +210,23 @@ public sealed class SessionStatusStoreTests
     }
 
     [Fact]
+    public void DeleteSessionRemovesOneSessionFile()
+    {
+        var paths = new CodexPaths(CreateTempRoot());
+        var store = new SessionStatusStore(paths);
+        var now = DateTimeOffset.Parse("2026-06-01T15:10:00+08:00");
+
+        store.Write(CreateSession("keep-me", CodexLightState.Red, @"F:\Keep", now));
+        store.Write(CreateSession("hide-me", CodexLightState.Yellow, @"F:\Hide", now));
+
+        store.DeleteSession("hide-me");
+        var sessions = store.LoadVisibleSessions(now);
+
+        Assert.Single(sessions);
+        Assert.Equal("keep-me", sessions[0].SessionId);
+    }
+
+    [Fact]
     public void LoadVisibleSessionsKeepsReliableSessionsWithSameWorkingDirectory()
     {
         var paths = new CodexPaths(CreateTempRoot());
@@ -242,6 +289,7 @@ public sealed class SessionStatusStoreTests
         DateTimeOffset updatedAt,
         string source = "cli")
     {
+        // 构造有代表性的 hook 快照，同时允许每个测试变更关键字段。
         return new CodexSessionStatus
         {
             SessionId = id,
@@ -264,6 +312,7 @@ public sealed class SessionStatusStoreTests
 
     private static string CreateTempRoot()
     {
+        // 使用假主目录，确保会话 JSON 文件不会泄漏到真实 Codex 状态中。
         var path = Path.Combine(Path.GetTempPath(), "CodexTrafficLightTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;

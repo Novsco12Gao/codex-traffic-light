@@ -3,9 +3,14 @@ using System.Text.Json.Nodes;
 
 namespace CodexTrafficLight.Core.Services;
 
+/// <summary>
+/// 安装 Codex hook 配置项，以及写入状态文件的 PowerShell 脚本。
+/// </summary>
 public sealed class CodexHookInstaller
 {
+    // 用于识别本应用拥有的 hook 项，避免影响用户自己的 hooks。
     private const string Marker = "codex_traffic_light_write_status.ps1";
+    private const string AppExeName = "CodexTrafficLight.App.exe";
     private readonly CodexPaths _paths;
 
     public CodexHookInstaller(CodexPaths paths)
@@ -13,6 +18,9 @@ public sealed class CodexHookInstaller
         _paths = paths;
     }
 
+    /// <summary>
+    /// 创建或更新 hook 配置，并返回 hooks.json 路径。
+    /// </summary>
     public string InstallOrUpdate()
     {
         _paths.EnsureCodexDirectory();
@@ -22,6 +30,7 @@ public sealed class CodexHookInstaller
         var hooks = root["hooks"] as JsonObject ?? new JsonObject();
         root["hooks"] = hooks;
 
+        // 将 Codex 生命周期事件映射为应用显示的颜色。
         AddOwnedEvent(hooks, "UserPromptSubmit", "red");
         AddOwnedEvent(hooks, "PermissionRequest", "yellow");
         AddOwnedEvent(hooks, "Stop", "green");
@@ -49,6 +58,7 @@ public sealed class CodexHookInstaller
         }
         catch
         {
+            // 替换为新配置对象前，先保留无效的用户配置。
             var backupPath = _paths.HooksPath + ".invalid-" + DateTime.Now.ToString("yyyyMMddHHmmss") + ".bak";
             File.Copy(_paths.HooksPath, backupPath, overwrite: false);
             return new JsonObject();
@@ -60,6 +70,7 @@ public sealed class CodexHookInstaller
         var existing = hooks[eventName] as JsonArray ?? new JsonArray();
         var cleaned = new JsonArray();
 
+        // 保留第三方或用户 hook 项，只替换本应用旧项。
         foreach (var item in existing)
         {
             if (item is not JsonObject obj || !ContainsOwnedCommand(obj))
@@ -87,6 +98,7 @@ public sealed class CodexHookInstaller
 
     private JsonObject CreateHookEntry(string eventName, string state)
     {
+        // Codex 要求每个事件对应一个包含 hooks 数组的对象。
         return new JsonObject
         {
             ["hooks"] = new JsonArray
@@ -115,7 +127,9 @@ public sealed class CodexHookInstaller
     {
         Directory.CreateDirectory(_paths.HookScriptDirectory);
 
-        const string script = """
+        var appPath = ResolveAppPath();
+        // 生成的脚本在 Codex hooks 中运行，因此避免依赖应用程序集。
+        var script = $$"""
 param(
     [Parameter(Mandatory=$true)]
     [ValidateSet('red','yellow','green','unknown')]
@@ -136,6 +150,47 @@ $diagnosticsDir = Join-Path $toolDir 'diagnostics'
 New-Item -ItemType Directory -Path $sessionsDir -Force | Out-Null
 New-Item -ItemType Directory -Path $diagnosticsDir -Force | Out-Null
 
+$settingsPath = '{{EscapePowerShellSingleQuotedString(_paths.SettingsPath)}}'
+$appPath = '{{EscapePowerShellSingleQuotedString(appPath)}}'
+
+function Test-CodexTrafficLightAutoLaunchEnabled {
+    if (-not (Test-Path -LiteralPath $settingsPath)) {
+        return $true
+    }
+
+    try {
+        $settings = Get-Content -Raw -LiteralPath $settingsPath -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+        if ($null -eq $settings.AutoLaunchOnCodexActivity) {
+            return $true
+        }
+
+        return [bool]$settings.AutoLaunchOnCodexActivity
+    } catch {
+        return $true
+    }
+}
+
+function Start-CodexTrafficLightIfNeeded {
+    if ($EventName -notin @('SessionStart', 'UserPromptSubmit', 'PermissionRequest')) {
+        return
+    }
+
+    if (-not (Test-CodexTrafficLightAutoLaunchEnabled)) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $appPath)) {
+        return
+    }
+
+    $running = Get-Process -Name 'CodexTrafficLight.App' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($running) {
+        return
+    }
+
+    Start-Process -FilePath $appPath
+}
+
 try {
     [Console]::InputEncoding = [Text.Encoding]::UTF8
     [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -144,6 +199,7 @@ try {
 
 $rawHookInput = ''
 try {
+    # Codex 通过标准输入发送 hook 元数据；这里容忍空内容或格式错误。
     $rawHookInput = [Console]::In.ReadToEnd()
     $rawHookInput = $rawHookInput.TrimStart([char]0xFEFF)
 } catch {
@@ -168,6 +224,7 @@ if ($currentProcess.ParentProcessId) {
 $codexProcess = $parentProcess
 $cursor = $parentProcess
 for ($i = 0; $i -lt 6 -and $cursor; $i++) {
+    # 沿父进程向上查找，因为 hook 的 PowerShell 进程通常位于 Codex 下方。
     if ($cursor.Name -match 'codex') {
         $codexProcess = $cursor
         break
@@ -215,6 +272,7 @@ if ([string]::IsNullOrWhiteSpace($sessionId)) {
     if (-not [string]::IsNullOrWhiteSpace($inputSessionId)) {
         $sessionId = "codex-$inputSessionId"
     } else {
+        # 当 Codex 未提供 ID 时，退回使用 PID 和进程启动标记。
         $startToken = if ($processStart) { $processStart } else { 'unknown-start' }
         $sessionId = "pid-$processId-" + ($startToken -replace '[^0-9A-Za-z]', '')
     }
@@ -282,6 +340,7 @@ $sessionPayload = [ordered]@{
 } | ConvertTo-Json -Compress
 
 Set-Content -LiteralPath $sessionTempPath -Value $sessionPayload -Encoding UTF8
+# 原子替换可避免 WPF 监听器读到半写入的 JSON 文件。
 Move-Item -LiteralPath $sessionTempPath -Destination $sessionPath -Force
 
 $diagnosticPath = Join-Path $diagnosticsDir 'latest-hook-context.json'
@@ -303,11 +362,38 @@ $diagnosticPayload = [ordered]@{
 } | ConvertTo-Json -Compress -Depth 4
 
 Set-Content -LiteralPath $diagnosticPath -Value $diagnosticPayload -Encoding UTF8
+
+Start-CodexTrafficLightIfNeeded
 """;
 
         if (!File.Exists(_paths.HookScriptPath) || File.ReadAllText(_paths.HookScriptPath) != script)
         {
             File.WriteAllText(_paths.HookScriptPath, script);
         }
+    }
+
+    private static string ResolveAppPath()
+    {
+        // 已安装应用可通过 Environment.ProcessPath 发现自身可执行文件。
+        var processPath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(processPath) &&
+            string.Equals(Path.GetFileName(processPath), AppExeName, StringComparison.OrdinalIgnoreCase))
+        {
+            return processPath;
+        }
+
+        var baseDirectoryCandidate = Path.Combine(AppContext.BaseDirectory, AppExeName);
+        if (File.Exists(baseDirectoryCandidate))
+        {
+            return baseDirectoryCandidate;
+        }
+
+        return Path.Combine(AppContext.BaseDirectory, AppExeName);
+    }
+
+    private static string EscapePowerShellSingleQuotedString(string value)
+    {
+        // PowerShell 单引号字符串通过连续两个单引号转义字面单引号。
+        return value.Replace("'", "''");
     }
 }

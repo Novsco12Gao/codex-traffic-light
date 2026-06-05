@@ -1,5 +1,8 @@
 namespace CodexTrafficLight.Tests;
 
+/// <summary>
+/// 验证影响安装路径和快捷方式的安装脚本设置。
+/// </summary>
 public sealed class InstallerScriptTests
 {
     [Fact]
@@ -28,6 +31,7 @@ public sealed class InstallerScriptTests
 
     private static string FindRepositoryRoot()
     {
+        // 测试执行从 bin 输出目录开始，因此向上查找解决方案文件。
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {

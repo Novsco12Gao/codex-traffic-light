@@ -28,7 +28,7 @@ powershell -ExecutionPolicy Bypass -File tools\publish-installer.ps1
 输出目录：
 
 ```text
-dist\installer\CodexTrafficLightSetup-1.0.1.exe
+dist\installer\CodexTrafficLightSetup-1.0.3.exe
 ```
 
 安装器会让用户选择安装位置，并把程序文件安装到独立的 `CodexTrafficLight` 文件夹中，同时创建开始菜单快捷方式，可选创建桌面快捷方式。

@@ -3,6 +3,9 @@ using CodexTrafficLight.Core.Models;
 
 namespace CodexTrafficLight.Core.Services;
 
+/// <summary>
+/// 下载发布清单并与当前运行的应用版本比较。
+/// </summary>
 public sealed class UpdateChecker
 {
     private static readonly JsonSerializerOptions JsonOptions = JsonOptionsFactory.Create();
@@ -13,6 +16,9 @@ public sealed class UpdateChecker
         _httpClient = httpClient;
     }
 
+    /// <summary>
+    /// 使用 HTTPS 清单地址和调用方提供的超时时间检查更新。
+    /// </summary>
     public async Task<UpdateCheckResult> CheckAsync(
         string currentVersion,
         string manifestUrl,
@@ -24,6 +30,7 @@ public sealed class UpdateChecker
             return Fail("当前版本号无效。", currentVersion);
         }
 
+        // 不允许非 HTTPS 清单，因为它控制更新提示和链接。
         if (!Uri.TryCreate(manifestUrl, UriKind.Absolute, out var manifestUri) ||
             manifestUri.Scheme != Uri.UriSchemeHttps)
         {
@@ -32,6 +39,7 @@ public sealed class UpdateChecker
 
         try
         {
+            // 将调用方取消令牌和本地超时关联起来，保证界面行为可预测。
             using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutSource.CancelAfter(timeout);
 
@@ -63,6 +71,7 @@ public sealed class UpdateChecker
             return Fail("远程版本号无效。", currentVersion);
         }
 
+        // 清单可能通过 HTTPS 获取，但仍可能包含不安全的下载地址。
         if (!Uri.TryCreate(manifest.DownloadUrl, UriKind.Absolute, out var downloadUri) ||
             downloadUri.Scheme != Uri.UriSchemeHttps)
         {
@@ -97,6 +106,7 @@ public sealed class UpdateChecker
             return false;
         }
 
+        // 接受两段或三段数字版本号，保持发布清单简单。
         var parts = value.Trim().Split('.');
         if (parts.Length is < 2 or > 3)
         {

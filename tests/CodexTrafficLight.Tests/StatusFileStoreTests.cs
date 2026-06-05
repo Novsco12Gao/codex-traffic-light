@@ -3,6 +3,9 @@ using CodexTrafficLight.Core.Services;
 
 namespace CodexTrafficLight.Tests;
 
+/// <summary>
+/// 验证聚合状态文件的往返读写和兜底状态。
+/// </summary>
 public sealed class StatusFileStoreTests
 {
     [Fact]
@@ -52,6 +55,7 @@ public sealed class StatusFileStoreTests
 
     private static string CreateTempRoot()
     {
+        // 状态文件与用户真实 CODEX_HOME 隔离。
         var path = Path.Combine(Path.GetTempPath(), "CodexTrafficLightTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;

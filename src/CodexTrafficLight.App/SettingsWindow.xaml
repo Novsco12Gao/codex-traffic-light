@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="设置"
-        Width="360"
-        Height="460"
+        Width="390"
+        Height="640"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#F5F6F8">
@@ -77,10 +77,63 @@
 
                 <TextBlock Text="任务" FontWeight="Bold" Foreground="#3A3E46" Margin="0,0,0,8"/>
                 <StackPanel Margin="0,0,0,14">
+                    <CheckBox x:Name="AutoLaunchCheckBox" Content="Codex 活动时自动打开红绿灯" Margin="0,0,0,8"/>
+                    <CheckBox x:Name="StartWithWindowsCheckBox" Content="开机自动启动" Margin="0,0,0,8"/>
                     <CheckBox x:Name="AutoOpenDrawerCheckBox" Content="黄灯时自动展开任务列表" Margin="0,0,0,8"/>
                     <CheckBox x:Name="ShowEndedSessionsCheckBox" Content="显示已结束会话" Margin="0,0,0,8"/>
                     <CheckBox x:Name="MutedCheckBox" Content="静音"/>
                 </StackPanel>
+
+                <TextBlock Text="提醒" FontWeight="Bold" Foreground="#3A3E46" Margin="0,0,0,8"/>
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="96"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="黄灯提醒" VerticalAlignment="Center" Foreground="#5B606A"/>
+                    <ComboBox x:Name="ReminderModeComboBox" Grid.Column="1" VerticalAlignment="Center">
+                        <ComboBoxItem Content="托盘气泡" Tag="balloon"/>
+                        <ComboBoxItem Content="气泡和声音" Tag="balloon-sound"/>
+                        <ComboBoxItem Content="只闪灯" Tag="flash"/>
+                        <ComboBoxItem Content="关闭提醒" Tag="silent"/>
+                    </ComboBox>
+                </Grid>
+
+                <TextBlock Text="会话保留" FontWeight="Bold" Foreground="#3A3E46" Margin="0,0,0,8"/>
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="70"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="32"/>
+                        <RowDefinition Height="32"/>
+                        <RowDefinition Height="32"/>
+                        <RowDefinition Height="32"/>
+                        <RowDefinition Height="32"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="完成会话保留" VerticalAlignment="Center" Foreground="#5B606A"/>
+                    <TextBox x:Name="GreenRetentionTextBox" Grid.Column="1" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="2" Text="分钟" VerticalAlignment="Center" Foreground="#5B606A" Margin="8,0,0,0"/>
+
+                    <TextBlock Grid.Row="1" Text="黄灯会话保留" VerticalAlignment="Center" Foreground="#5B606A"/>
+                    <TextBox x:Name="YellowRetentionTextBox" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="分钟" VerticalAlignment="Center" Foreground="#5B606A" Margin="8,0,0,0"/>
+
+                    <TextBlock Grid.Row="2" Text="红灯会话保留" VerticalAlignment="Center" Foreground="#5B606A"/>
+                    <TextBox x:Name="RedRetentionTextBox" Grid.Row="2" Grid.Column="1" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="分钟" VerticalAlignment="Center" Foreground="#5B606A" Margin="8,0,0,0"/>
+
+                    <TextBlock Grid.Row="3" Text="CLI 运行中最长保留" VerticalAlignment="Center" Foreground="#5B606A"/>
+                    <TextBox x:Name="LiveCliRetentionTextBox" Grid.Row="3" Grid.Column="1" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="3" Grid.Column="2" Text="小时" VerticalAlignment="Center" Foreground="#5B606A" Margin="8,0,0,0"/>
+
+                    <TextBlock Grid.Row="4" Text="VS Code 最长保留" VerticalAlignment="Center" Foreground="#5B606A"/>
+                    <TextBox x:Name="LiveVsCodePluginRetentionTextBox" Grid.Row="4" Grid.Column="1" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="4" Grid.Column="2" Text="小时" VerticalAlignment="Center" Foreground="#5B606A" Margin="8,0,0,0"/>
+                </Grid>
             </StackPanel>
         </ScrollViewer>
 

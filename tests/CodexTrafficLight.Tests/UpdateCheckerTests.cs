@@ -3,6 +3,9 @@ using CodexTrafficLight.Core.Services;
 
 namespace CodexTrafficLight.Tests;
 
+/// <summary>
+/// 使用内存 HTTP 处理器验证更新清单比较。
+/// </summary>
 public sealed class UpdateCheckerTests
 {
     [Fact]
@@ -74,6 +77,7 @@ public sealed class UpdateCheckerTests
 
     private static HttpClient CreateHttpClient(string responseBody, HttpStatusCode statusCode = HttpStatusCode.OK)
     {
+        // 避免真实网络调用，同时保留 HttpClient 行为。
         return new HttpClient(new StaticResponseHandler(responseBody, statusCode));
     }
 
@@ -90,6 +94,7 @@ public sealed class UpdateCheckerTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            // 无论 URL 如何都返回配置好的响应；URL 校验在其他位置测试。
             var response = new HttpResponseMessage(_statusCode)
             {
                 Content = new StringContent(_responseBody)

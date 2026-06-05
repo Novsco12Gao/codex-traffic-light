@@ -90,7 +90,7 @@ public sealed class AppVisualStyleTests
         var project = File.ReadAllText(Path.Combine(root, "src", "CodexTrafficLight.App", "CodexTrafficLight.App.csproj"));
         var code = File.ReadAllText(Path.Combine(root, "src", "CodexTrafficLight.App", "MainWindow.xaml.cs"));
 
-        Assert.Contains("<Version>1.0.1</Version>", project);
+        Assert.Contains("<Version>1.0.3</Version>", project);
         Assert.Contains("<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>", project);
         Assert.Contains("UpdateManifestUrl", code);
         Assert.Contains("CheckForUpdatesAsync", code);
@@ -113,6 +113,38 @@ public sealed class AppVisualStyleTests
             "Expected Settings tray menu item above Exit.");
         Assert.True(File.Exists(settingsWindowPath), "Expected SettingsWindow.xaml to exist.");
         Assert.Contains("LampEffectComboBox", File.ReadAllText(settingsWindowPath));
+    }
+
+    [Fact]
+    public void AppHasYellowReminderSessionQuickActionsAndStatsWindow()
+    {
+        var root = FindRepositoryRoot();
+        var mainWindowCode = File.ReadAllText(Path.Combine(root, "src", "CodexTrafficLight.App", "MainWindow.xaml.cs"));
+        var statsWindowPath = Path.Combine(root, "src", "CodexTrafficLight.App", "StatsWindow.xaml");
+
+        Assert.Contains("ShowYellowReminderIfNeeded", mainWindowCode);
+        Assert.Contains("ShowBalloonTip", mainWindowCode);
+        Assert.Contains("CreateSessionRowContextMenu", mainWindowCode);
+        Assert.Contains("OpenSessionDirectory", mainWindowCode);
+        Assert.Contains("HideSession", mainWindowCode);
+        Assert.Contains("ShowStatsWindow", mainWindowCode);
+        Assert.True(File.Exists(statsWindowPath), "Expected StatsWindow.xaml to exist.");
+    }
+
+    [Fact]
+    public void AppHasDiagnosticsStartupReminderAndRetentionSettings()
+    {
+        var root = FindRepositoryRoot();
+        var mainWindowCode = File.ReadAllText(Path.Combine(root, "src", "CodexTrafficLight.App", "MainWindow.xaml.cs"));
+        var settingsXaml = File.ReadAllText(Path.Combine(root, "src", "CodexTrafficLight.App", "SettingsWindow.xaml"));
+        var diagnosticWindowPath = Path.Combine(root, "src", "CodexTrafficLight.App", "DiagnosticsWindow.xaml");
+
+        Assert.Contains("ShowDiagnosticsWindow", mainWindowCode);
+        Assert.Contains("ToggleStartWithWindows", mainWindowCode);
+        Assert.Contains("ReminderModeComboBox", settingsXaml);
+        Assert.Contains("GreenRetentionTextBox", settingsXaml);
+        Assert.Contains("LiveVsCodePluginRetentionTextBox", settingsXaml);
+        Assert.True(File.Exists(diagnosticWindowPath), "Expected DiagnosticsWindow.xaml to exist.");
     }
 
     private static string FindRepositoryRoot()

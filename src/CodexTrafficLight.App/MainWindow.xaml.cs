@@ -9,6 +9,8 @@ using System.Windows.Threading;
 using System.Diagnostics;
 using System.Reflection;
 using System.Net.Http;
+using System.Media;
+using System.Text;
 using CodexTrafficLight.Core.Models;
 using CodexTrafficLight.Core.Services;
 using Forms = System.Windows.Forms;
@@ -20,6 +22,9 @@ using WpfMessageBox = System.Windows.MessageBox;
 
 namespace CodexTrafficLight.App;
 
+/// <summary>
+/// 主悬浮红绿灯窗口，同时负责托盘菜单和界面协调。
+/// </summary>
 public partial class MainWindow : Window
 {
     private readonly CodexPaths _paths = new();
@@ -40,6 +45,7 @@ public partial class MainWindow : Window
     private Forms.NotifyIcon? _notifyIcon;
     private CodexLightState _currentState = CodexLightState.Unknown;
     private CodexLightState _lastStatsState = CodexLightState.Unknown;
+    private CodexLightState _lastReminderState = CodexLightState.Unknown;
     private DateTimeOffset? _redStartedAt;
     private readonly bool _shouldShowTrustReminder;
     private IReadOnlyList<CodexSessionStatus> _visibleSessions = Array.Empty<CodexSessionStatus>();
@@ -81,11 +87,16 @@ xUnit 自动化测试
     {
         InitializeComponent();
 
+        // 核心存储会被文件监听器、手动托盘操作和启动初始化共同使用。
         _statusStore = new StatusFileStore(_paths);
         _watcher = new StatusFileWatcher(_paths, _statusStore);
         _statsStore = new StatsStore(_paths);
         _sessionStatusStore = new SessionStatusStore(_paths);
-        _sessionWatcher = new SessionStatusDirectoryWatcher(_paths, _sessionStatusStore, () => _settings.ShowEndedSessions);
+        _sessionWatcher = new SessionStatusDirectoryWatcher(
+            _paths,
+            _sessionStatusStore,
+            () => _settings.ShowEndedSessions,
+            () => _settings.ToSessionRetentionOptions());
         _settingsStore = new AppSettingsStore(_paths);
         _shouldShowTrustReminder = !File.Exists(_paths.SettingsPath);
         _settings = _settingsStore.Load();
@@ -96,6 +107,7 @@ xUnit 自动化测试
             SetDrawerOpen(false, suppressAutoOpen: false);
         };
 
+        // 查找表让状态到视觉元素的映射保持紧凑且一致。
         _lamps = new Dictionary<CodexLightState, Ellipse>
         {
             [CodexLightState.Red] = RedLamp,
@@ -128,6 +140,7 @@ xUnit 自动化测试
         ApplyTheme(_settings.Theme);
         ApplyStatus(_statusStore.Read());
 
+        // 监听器回调来自后台线程，必须切回 WPF UI 线程。
         _watcher.StatusChanged += status =>
         {
             Dispatcher.Invoke(() => ApplyStatus(status));
@@ -145,6 +158,7 @@ xUnit 自动化测试
 
     public void ApplyStatus(CodexStatus status)
     {
+        // 单会话文件比聚合兜底状态文件更具体。
         if (_visibleSessions.Count > 0)
         {
             return;
@@ -162,6 +176,7 @@ xUnit 自动化测试
 
     private void RecordStatsState(CodexLightState state)
     {
+        // 忽略未知状态和重复状态，使统计只记录状态转换。
         if (state == CodexLightState.Unknown || state == _lastStatsState)
         {
             return;
@@ -169,6 +184,7 @@ xUnit 自动化测试
 
         if (!_statsInitialized)
         {
+            // 初始化基线时不记录启动时加载到的旧状态。
             _redStartedAt = state == CodexLightState.Red ? DateTimeOffset.Now : null;
             _lastStatsState = state;
             return;
@@ -181,6 +197,7 @@ xUnit 自动化测试
 
     public void ApplySessions(IReadOnlyList<CodexSessionStatus> sessions)
     {
+        // 抽屉展示单个会话，主灯展示这些会话的聚合状态。
         _visibleSessions = sessions;
         var aggregateState = SessionStatusStore.GetAggregateState(sessions);
         var hasMultipleSessions = sessions.Count > 1;
@@ -214,8 +231,10 @@ xUnit 自动化测试
 
     public void ApplyState(CodexLightState state)
     {
+        // 从头重建视觉状态，避免 WPF 动画互相叠加。
         _currentState = state;
         StopAnimations();
+        ShowYellowReminderIfNeeded(state);
 
         foreach (var (lampState, lamp) in _lamps)
         {
@@ -227,6 +246,7 @@ xUnit 自动化测试
 
     private void ApplyLampVisual(CodexLightState state, Ellipse lamp, Ellipse well, Ellipse ring, bool active)
     {
+        // 每个颜色位置的灯、灯槽、发光和光环会一起更新。
         var config = GetLampConfig(state);
         var lampBrush = CreateLampBrush(config, active);
         lamp.Fill = lampBrush;
@@ -252,6 +272,7 @@ xUnit 自动化测试
             return;
         }
 
+        // 红灯用呼吸效果表示正在工作；黄灯和绿灯用脉冲表示参考状态。
         if (state == CodexLightState.Red)
         {
             StartBreath(lamp, lampGlow, wellGlow, GetLampEffectDuration());
@@ -263,6 +284,7 @@ xUnit 自动化测试
 
     private static LampVisualConfig GetLampConfig(CodexLightState state)
     {
+        // 将颜色常量集中在一处，保证所有灯元素使用同一套配色。
         return state switch
         {
             CodexLightState.Red => new LampVisualConfig(
@@ -290,6 +312,7 @@ xUnit 自动化测试
 
     private static RadialGradientBrush CreateLampBrush(LampVisualConfig config, bool active)
     {
+        // 偏移渐变原点可在每个灯面上形成小的玻璃高光。
         var baseColor = active ? config.ActiveColor : config.DimColor;
         return new RadialGradientBrush
         {
@@ -308,6 +331,7 @@ xUnit 自动化测试
 
     private static RadialGradientBrush CreateWellBrush(LampVisualConfig config, bool active)
     {
+        // 灯槽保持深色；对应灯亮起时吸收当前颜色。
         return new RadialGradientBrush
         {
             Center = new WpfPoint(0.5, 0.45),
@@ -341,6 +365,7 @@ xUnit 自动化测试
 
     private static DoubleAnimation CreateDoubleAnimation(double targetValue)
     {
+        // 短缓动可避免 hooks 写入新状态时视觉变化过于生硬。
         return new DoubleAnimation
         {
             To = targetValue,
@@ -351,6 +376,7 @@ xUnit 自动化测试
 
     private TimeSpan GetLampEffectDuration()
     {
+        // 设置中用简短字符串预设保存速度，便于持久化。
         return _settings.LampSpeed.ToLowerInvariant() switch
         {
             "slow" => TimeSpan.FromMilliseconds(1500),
@@ -361,6 +387,7 @@ xUnit 自动化测试
 
     private static void StartBreath(Ellipse lamp, DropShadowEffect lampGlow, DropShadowEffect wellGlow, TimeSpan duration)
     {
+        // 呼吸效果同时动画化透明度和发光，让红灯有动感且不改变布局。
         var opacityAnimation = new DoubleAnimation
         {
             From = 1,
@@ -387,6 +414,7 @@ xUnit 自动化测试
 
     private static void StartReferencePulse(Ellipse lamp, Ellipse ring, TimeSpan duration)
     {
+        // 参考脉冲会为非工作状态添加扩散光环。
         var lampAnimation = new DoubleAnimation
         {
             From = 1,
@@ -424,6 +452,7 @@ xUnit 自动化测试
 
     private static void ResetRingScale(Ellipse ring)
     {
+        // 恢复默认变换前先停止之前的脉冲动画。
         if (ring.RenderTransform is not ScaleTransform scale)
         {
             return;
@@ -437,6 +466,7 @@ xUnit 自动化测试
 
     private void StopAnimations()
     {
+        // WPF 动画会持续占用依赖属性，必须显式清除。
         foreach (var lamp in _lamps.Values)
         {
             lamp.BeginAnimation(OpacityProperty, null);
@@ -473,6 +503,7 @@ xUnit 自动化测试
 
     private void RenderSessionRows(IReadOnlyList<CodexSessionStatus> sessions)
     {
+        // 会话行重建成本很低，比对小列表差异更简单。
         SessionListPanel.Children.Clear();
         foreach (var session in sessions)
         {
@@ -482,6 +513,7 @@ xUnit 自动化测试
 
     private UIElement CreateSessionRow(CodexSessionStatus session)
     {
+        // 已完成会话在抽屉中仍可读，但视觉上会弱化。
         var row = new Grid
         {
             Margin = new Thickness(4, 8, 0, 0),
@@ -538,12 +570,34 @@ xUnit 自动化测试
         };
         Grid.SetColumn(label, 2);
         row.Children.Add(label);
+        row.ContextMenu = CreateSessionRowContextMenu(session);
 
         return row;
     }
 
+    private ContextMenu CreateSessionRowContextMenu(CodexSessionStatus session)
+    {
+        // 单会话命令会操作工作目录或隐藏对应会话文件。
+        var menu = new ContextMenu();
+
+        var openItem = new MenuItem { Header = "打开工作目录" };
+        openItem.Click += (_, _) => OpenSessionDirectory(session);
+        menu.Items.Add(openItem);
+
+        var copyItem = new MenuItem { Header = "复制工作目录" };
+        copyItem.Click += (_, _) => CopySessionDirectory(session);
+        menu.Items.Add(copyItem);
+
+        var hideItem = new MenuItem { Header = "隐藏此会话" };
+        hideItem.Click += (_, _) => HideSession(session);
+        menu.Items.Add(hideItem);
+
+        return menu;
+    }
+
     private void SetDrawerOpen(bool open, bool suppressAutoOpen)
     {
+        // 用户手动关闭后会短暂抑制下一次自动打开，以尊重用户操作。
         SessionDrawer.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         if (!open && suppressAutoOpen)
         {
@@ -556,6 +610,7 @@ xUnit 自动化测试
 
     private static string GetSessionDisplayName(CodexSessionStatus session)
     {
+        // 优先使用 hook 提供的名称，否则从工作区推导可读标签。
         if (!string.IsNullOrWhiteSpace(session.DisplayName))
         {
             return session.DisplayName;
@@ -568,6 +623,7 @@ xUnit 自动化测试
 
     private static string GetPathTail(string path)
     {
+        // 只显示父目录和末级目录，让长工作区路径适配紧凑抽屉。
         if (string.IsNullOrWhiteSpace(path))
         {
             return "-";
@@ -580,6 +636,7 @@ xUnit 自动化测试
 
     private static string FormatAge(DateTimeOffset updatedAt)
     {
+        // 相对时间让行内容易扫读，无需完整时间戳。
         var age = DateTimeOffset.Now - updatedAt;
         if (age.TotalSeconds < 60)
         {
@@ -651,6 +708,7 @@ xUnit 自动化测试
 
     private void CreateTrayMenu()
     {
+        // 使用 Windows Forms 托盘图标，因为 WPF 没有内置通知图标。
         _notifyIcon = new Forms.NotifyIcon
         {
             Text = "Codex 红绿灯",
@@ -664,6 +722,7 @@ xUnit 自动化测试
 
     private void RebuildTrayMenu()
     {
+        // 设置变化后重建菜单文字，使可切换状态反映在文本中。
         if (_notifyIcon?.ContextMenuStrip is null)
         {
             return;
@@ -683,10 +742,13 @@ xUnit 自动化测试
         menu.Items.Add("重新写入配置", null, (_, _) => RewriteHooks(showReminder: true));
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(_settings.Theme == "dark" ? "切换浅色模式" : "切换深色模式", null, (_, _) => ToggleTheme());
+        menu.Items.Add(_settings.AutoLaunchOnCodexActivity ? "关闭 Codex 自动打开红绿灯" : "开启 Codex 自动打开红绿灯", null, (_, _) => ToggleAutoLaunchOnCodexActivity());
+        menu.Items.Add(_settings.StartWithWindows ? "关闭开机自动启动" : "开启开机自动启动", null, (_, _) => ToggleStartWithWindows());
         menu.Items.Add(_settings.AutoOpenDrawerOnYellow ? "关闭黄灯自动展开" : "开启黄灯自动展开", null, (_, _) => ToggleAutoOpenDrawerOnYellow());
         menu.Items.Add(_settings.ShowEndedSessions ? "隐藏已结束会话" : "显示已结束会话", null, (_, _) => ToggleShowEndedSessions());
         menu.Items.Add("清理已完成会话", null, (_, _) => ClearEndedSessions());
-        menu.Items.Add("本周周报", null, (_, _) => ShowWeeklyReport());
+        menu.Items.Add("统计", null, (_, _) => ShowStatsWindow());
+        menu.Items.Add("诊断", null, (_, _) => ShowDiagnosticsWindow());
         menu.Items.Add("检查更新", null, async (_, _) => await CheckForUpdatesAsync());
         menu.Items.Add("关于我", null, (_, _) => ShowAbout());
         menu.Items.Add("设置", null, (_, _) => ShowSettingsWindow());
@@ -701,6 +763,7 @@ xUnit 自动化测试
 
     private void ToggleWindowVisibility()
     {
+        // 托盘命令会恢复紧凑悬浮窗口，而不是创建新窗口。
         if (IsVisible)
         {
             Hide();
@@ -714,6 +777,7 @@ xUnit 自动化测试
 
     private void ShowSettingsWindow()
     {
+        // 对话框持有一份设置副本，仅在用户保存后返回。
         var window = new SettingsWindow(_settings)
         {
             Owner = this
@@ -727,9 +791,48 @@ xUnit 自动化测试
         ApplySettings(window.Settings);
     }
 
+    private void ShowYellowReminderIfNeeded(CodexLightState state)
+    {
+        // 每次切换到黄灯只显示一次通知，静音时除外。
+        if (state != CodexLightState.Yellow)
+        {
+            _lastReminderState = state;
+            return;
+        }
+
+        if (_lastReminderState == CodexLightState.Yellow)
+        {
+            return;
+        }
+
+        _lastReminderState = state;
+        if (_settings.Muted || _notifyIcon is null)
+        {
+            return;
+        }
+
+        var reminderMode = _settings.ReminderMode.ToLowerInvariant();
+        if (reminderMode is "silent" or "flash")
+        {
+            return;
+        }
+
+        if (reminderMode == "balloon-sound")
+        {
+            SystemSounds.Exclamation.Play();
+        }
+
+        _notifyIcon.BalloonTipTitle = "Codex 等待权限";
+        _notifyIcon.BalloonTipText = "有任务需要你确认权限。";
+        _notifyIcon.ShowBalloonTip(3000);
+    }
+
     private void ApplySettings(AppSettings settings)
     {
+        // 设置可能影响 hooks、布局、主题和过滤，因此逐项刷新相关界面。
         SaveSettings(settings);
+        StartupRegistrationService.SetEnabled(_settings.StartWithWindows);
+        RewriteHooks(showReminder: false);
         Topmost = _settings.Topmost;
         MuteCheckBox.IsChecked = _settings.Muted;
         ThemeCheckBox.IsChecked = _settings.Theme == "dark";
@@ -741,6 +844,7 @@ xUnit 自动化测试
 
     private void SetManualState(CodexLightState state, string eventName)
     {
+        // 托盘手动命令写入与 hook 事件相同的状态文件。
         var status = new CodexStatus(state, eventName, DateTimeOffset.Now);
         _statusStore.Write(status);
         ApplyStatus(status);
@@ -748,6 +852,7 @@ xUnit 自动化测试
 
     private void RewriteHooks(bool showReminder)
     {
+        // 重新安装是幂等的，只替换本应用拥有的配置项。
         var path = new CodexHookInstaller(_paths).InstallOrUpdate();
         if (showReminder)
         {
@@ -757,6 +862,7 @@ xUnit 自动化测试
 
     private void InstallHooksAtStartup()
     {
+        // 启动时确保 hooks 存在，并在首次启动时创建初始绿灯状态。
         var hooksPath = new CodexHookInstaller(_paths).InstallOrUpdate();
         if (!File.Exists(_paths.StatusPath))
         {
@@ -779,6 +885,7 @@ xUnit 自动化测试
 
     private void ToggleStyle()
     {
+        // 样式可在三灯显示和单个活动灯显示之间切换。
         var next = _settings.Style == "triple" ? "single" : "triple";
         SaveSettings(_settings with { Style = next });
         ApplyStyle(next);
@@ -787,6 +894,7 @@ xUnit 自动化测试
 
     private void ApplyStyle(string style)
     {
+        // 单灯模式下未知状态保留黄灯可见，避免外壳为空。
         if (style == "single")
         {
             Body.Height = 92;
@@ -811,6 +919,7 @@ xUnit 自动化测试
 
     private void ToggleTheme()
     {
+        // 主题变化会立即持久化，并同步到托盘菜单文字。
         var next = _settings.Theme == "dark" ? "light" : "dark";
         SaveSettings(_settings with { Theme = next });
         ApplyTheme(next);
@@ -823,8 +932,24 @@ xUnit 自动化测试
         RebuildTrayMenu();
     }
 
+    private void ToggleAutoLaunchOnCodexActivity()
+    {
+        SaveSettings(_settings with { AutoLaunchOnCodexActivity = !_settings.AutoLaunchOnCodexActivity });
+        RewriteHooks(showReminder: false);
+        RebuildTrayMenu();
+    }
+
+    private void ToggleStartWithWindows()
+    {
+        var next = !_settings.StartWithWindows;
+        SaveSettings(_settings with { StartWithWindows = next });
+        StartupRegistrationService.SetEnabled(next);
+        RebuildTrayMenu();
+    }
+
     private void ToggleShowEndedSessions()
     {
+        // 该设置会改变会话可见性，因此需要刷新抽屉。
         SaveSettings(_settings with { ShowEndedSessions = !_settings.ShowEndedSessions });
         RebuildTrayMenu();
         ApplySessions(LoadCurrentSessions());
@@ -832,17 +957,46 @@ xUnit 自动化测试
 
     private void ClearEndedSessions()
     {
-        _sessionStatusStore.ClearEndedSessions();
+        // 只删除已过期的完成会话，活动文件保持不变。
+        _sessionStatusStore.ClearEndedSessions(_settings.ToSessionRetentionOptions());
+        ApplySessions(LoadCurrentSessions());
+    }
+
+    private void OpenSessionDirectory(CodexSessionStatus session)
+    {
+        // 使用 shell 执行，让资源管理器按 Windows 默认行为打开文件夹。
+        if (string.IsNullOrWhiteSpace(session.WorkingDirectory) || !Directory.Exists(session.WorkingDirectory))
+        {
+            WpfMessageBox.Show("工作目录不存在。", "Codex 任务");
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo(session.WorkingDirectory) { UseShellExecute = true });
+    }
+
+    private static void CopySessionDirectory(CodexSessionStatus session)
+    {
+        if (!string.IsNullOrWhiteSpace(session.WorkingDirectory))
+        {
+            System.Windows.Clipboard.SetText(session.WorkingDirectory);
+        }
+    }
+
+    private void HideSession(CodexSessionStatus session)
+    {
+        // 隐藏会话通过删除对应的单会话 JSON 文件实现。
+        _sessionStatusStore.DeleteSession(session.SessionId);
         ApplySessions(LoadCurrentSessions());
     }
 
     private IReadOnlyList<CodexSessionStatus> LoadCurrentSessions()
     {
-        return _sessionStatusStore.LoadSessions(_settings.ShowEndedSessions);
+        return _sessionStatusStore.LoadSessions(_settings.ShowEndedSessions, _settings.ToSessionRetentionOptions());
     }
 
     private void ApplyTheme(string theme)
     {
+        // 应用较小，没有资源主题层，因此直接应用主题颜色。
         Body.Background = theme == "dark"
             ? new SolidColorBrush(MediaColor.FromRgb(43, 43, 43))
             : new SolidColorBrush(MediaColor.FromRgb(230, 230, 230));
@@ -891,6 +1045,7 @@ xUnit 自动化测试
 
     private static DrawingIcon LoadApplicationIcon()
     {
+        // 优先使用打包后的可执行文件图标，失败时使用默认应用图标。
         var processPath = Environment.ProcessPath;
         if (!string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath))
         {
@@ -900,38 +1055,76 @@ xUnit 自动化测试
         return DrawingSystemIcons.Application;
     }
 
-    private void ShowWeeklyReport()
+    private void ShowStatsWindow()
     {
-        var all = _statsStore.Load();
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        var diff = ((int)today.DayOfWeek + 6) % 7;
-        var monday = today.AddDays(-diff);
-
-        var redCount = 0;
-        var greenCount = 0;
-        long redDuration = 0;
-
-        for (var i = 0; i < 7; i++)
+        // 打开统计窗口时计算摘要，确保反映最新统计文件。
+        var window = new StatsWindow(_statsStore.GetTodaySummary(), _statsStore.GetCurrentWeekSummary())
         {
-            var key = monday.AddDays(i).ToString("yyyy-MM-dd");
-            if (!all.TryGetValue(key, out var stats))
-            {
-                continue;
-            }
+            Owner = this
+        };
+        window.ShowDialog();
+    }
 
-            redCount += stats.RedCount;
-            greenCount += stats.GreenCount;
-            redDuration += stats.RedDurationMs;
+    private void ShowDiagnosticsWindow()
+    {
+        var window = new DiagnosticsWindow(BuildDiagnosticsText())
+        {
+            Owner = this
+        };
+        window.ShowDialog();
+    }
+
+    private string BuildDiagnosticsText()
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Codex 红绿灯诊断");
+        builder.AppendLine($"版本: {GetCurrentVersion()}");
+        builder.AppendLine($"进程路径: {Environment.ProcessPath}");
+        builder.AppendLine($"当前灯: {_currentState}");
+        builder.AppendLine($"托盘静音: {_settings.Muted}");
+        builder.AppendLine($"提醒模式: {_settings.ReminderMode}");
+        builder.AppendLine($"开机启动设置: {_settings.StartWithWindows}");
+        builder.AppendLine($"开机启动注册: {StartupRegistrationService.IsEnabled()}");
+        builder.AppendLine($"Codex 活动自动打开: {_settings.AutoLaunchOnCodexActivity}");
+        builder.AppendLine($"黄灯自动展开: {_settings.AutoOpenDrawerOnYellow}");
+        builder.AppendLine($"显示已结束会话: {_settings.ShowEndedSessions}");
+        builder.AppendLine($"会话数量: {_visibleSessions.Count}");
+        builder.AppendLine();
+        builder.AppendLine("路径");
+        builder.AppendLine($"Codex 目录: {_paths.CodexDirectory}");
+        builder.AppendLine($"Hooks 配置: {_paths.HooksPath}");
+        builder.AppendLine($"状态文件: {_paths.StatusPath}");
+        builder.AppendLine($"设置文件: {_paths.SettingsPath}");
+        builder.AppendLine($"统计文件: {_paths.StatsPath}");
+        builder.AppendLine($"Hook 脚本: {_paths.HookScriptPath}");
+        builder.AppendLine($"会话目录: {_paths.SessionDirectory}");
+        builder.AppendLine($"诊断目录: {_paths.HookDiagnosticsDirectory}");
+        builder.AppendLine();
+        builder.AppendLine("保留时间");
+        builder.AppendLine($"绿灯: {_settings.GreenRetentionMinutes} 分钟");
+        builder.AppendLine($"黄灯: {_settings.YellowRetentionMinutes} 分钟");
+        builder.AppendLine($"红灯: {_settings.RedRetentionMinutes} 分钟");
+        builder.AppendLine($"CLI 运行中: {_settings.LiveCliWorkRetentionHours} 小时");
+        builder.AppendLine($"VS Code 插件运行中: {_settings.LiveVsCodePluginWorkRetentionHours} 小时");
+
+        var latestDiagnosticsPath = System.IO.Path.Combine(_paths.HookDiagnosticsDirectory, "latest-hook-context.json");
+        builder.AppendLine();
+        builder.AppendLine("最近 hook 诊断");
+        if (File.Exists(latestDiagnosticsPath))
+        {
+            builder.AppendLine(File.ReadAllText(latestDiagnosticsPath));
+        }
+        else
+        {
+            builder.AppendLine("未找到 latest-hook-context.json");
         }
 
-        var duration = TimeSpan.FromMilliseconds(redDuration);
-        WpfMessageBox.Show(
-            $"思考次数：{redCount} 次\n回复次数：{greenCount} 次\n思考总时长：{(int)duration.TotalHours} 小时 {duration.Minutes} 分钟",
-            "本周周报");
+        return builder.ToString();
     }
 
     private async Task CheckForUpdatesAsync()
     {
+        // HTTP 检查使用独立超时运行，同时保持界面响应。
         var menu = _notifyIcon?.ContextMenuStrip;
         var previousCursor = Cursor;
         Cursor = System.Windows.Input.Cursors.Wait;
@@ -971,16 +1164,19 @@ xUnit 自动化测试
 
     private static string GetCurrentVersion()
     {
-        return Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.1";
+        // 程序集版本来自项目文件；兜底值用于处理调试异常情况。
+        return Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.3";
     }
 
     private static void OpenUrl(string url)
     {
+        // shell 执行会把 HTTPS 打开交给用户默认浏览器。
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     private void ApplySavedWindowPosition()
     {
+        // 恢复上次窗口位置；没有记录时默认放在工作区右上附近。
         if (_settings.WindowLeft.HasValue && _settings.WindowTop.HasValue)
         {
             Left = _settings.WindowLeft.Value;
@@ -994,12 +1190,14 @@ xUnit 自动化测试
 
     private void SaveSettings(AppSettings settings)
     {
+        // 持久化前先更新内存快照，保证后续界面读取一致。
         _settings = settings;
         _settingsStore?.Save(_settings);
     }
 
     private void UpdateWindowHeight()
     {
+        // 宽高按固定格式计算，避免托盘尺寸界面随内容漂移。
         var panelOpen = SettingsPanel.Visibility == Visibility.Visible;
         Width = SessionDrawer.Visibility == Visibility.Visible ? 374 : 100;
         var baseHeight = _settings.Style == "single"
@@ -1012,11 +1210,13 @@ xUnit 自动化测试
 
     private void Body_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+        // 无边框窗口使用主体区域作为拖拽把手。
         DragMove();
     }
 
     private void GearButton_Click(object sender, RoutedEventArgs e)
     {
+        // 存在多个会话时，齿轮按钮优先切换抽屉而不是设置面板。
         if (_visibleSessions.Count > 1)
         {
             SetDrawerOpen(SessionDrawer.Visibility != Visibility.Visible, suppressAutoOpen: true);
@@ -1031,6 +1231,7 @@ xUnit 自动化测试
 
     private void SessionCountBadge_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+        // 防止点击徽标时同时触发窗口拖拽处理。
         e.Handled = true;
         if (_visibleSessions.Count > 1)
         {
@@ -1040,11 +1241,13 @@ xUnit 自动化测试
 
     private void MuteCheckBox_Changed(object sender, RoutedEventArgs e)
     {
+        // 内联复选框变化会立即持久化。
         SaveSettings(_settings with { Muted = MuteCheckBox.IsChecked == true });
     }
 
     private void ThemeCheckBox_Changed(object sender, RoutedEventArgs e)
     {
+        // 紧凑面板与托盘主题命令保持一致。
         var theme = ThemeCheckBox.IsChecked == true ? "dark" : "light";
         SaveSettings(_settings with { Theme = theme });
         ApplyTheme(theme);
@@ -1053,12 +1256,14 @@ xUnit 自动化测试
 
     protected override void OnLocationChanged(EventArgs e)
     {
+        // 用户拖动悬浮窗口后保存位置。
         base.OnLocationChanged(e);
         _settingsStore?.Save(_settings with { WindowLeft = Left, WindowTop = Top });
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        // 清理监听器和托盘资源，确保单实例互斥体能干净释放。
         _watcher.Dispose();
         _sessionWatcher.Dispose();
         if (_notifyIcon is not null)

@@ -5,6 +5,7 @@ namespace CodexTrafficLight.Tests;
 
 /// <summary>
 /// 验证设置持久化，并避免触碰真实用户配置目录。
+/// 默认值测试保护首次启动体验，往返测试保护新增设置字段不会丢失。
 /// </summary>
 public sealed class AppSettingsStoreTests
 {

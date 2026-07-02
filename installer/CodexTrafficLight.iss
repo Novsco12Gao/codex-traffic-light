@@ -11,16 +11,20 @@ AppId={{8B80A5D1-493C-4F63-9D40-9EA8C8793F4E}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+; 安装到 Program Files 下的独立目录，避免和源码目录或 Codex 配置目录混在一起。
 DefaultDirName={autopf}\CodexTrafficLight
 AppendDefaultDirName=yes
 DisableProgramGroupPage=yes
+; 安装包输出到 dist\installer，文件名自动带版本号。
 OutputDir=..\dist\installer
 OutputBaseFilename=CodexTrafficLightSetup-{#AppVersion}
 SetupIconFile=..\src\CodexTrafficLight.App\Assets\app-icon.ico
+; 使用较高压缩率，减少自包含运行时带来的安装包体积。
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
+; 当前发布脚本只生成 win-x64，自包含文件也按 x64 安装。
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 UninstallDisplayIcon={app}\{#AppExeName}

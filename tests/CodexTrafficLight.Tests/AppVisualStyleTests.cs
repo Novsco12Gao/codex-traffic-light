@@ -2,6 +2,10 @@ using System.Text.RegularExpressions;
 
 namespace CodexTrafficLight.Tests;
 
+/// <summary>
+/// 这些测试通过读取 XAML 和代码文本，保护关键界面结构、托盘入口和发布配置不被误删。
+/// 它们不是像素级 UI 测试，而是轻量的结构回归测试。
+/// </summary>
 public sealed class AppVisualStyleTests
 {
     [Fact]
@@ -149,6 +153,7 @@ public sealed class AppVisualStyleTests
 
     private static string FindRepositoryRoot()
     {
+        // 测试运行目录在 bin 下，需要向上寻找解决方案文件定位仓库根目录。
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {

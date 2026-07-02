@@ -6,6 +6,7 @@ namespace CodexTrafficLight.App;
 
 /// <summary>
 /// 监听单会话 JSON 文件，并定期刷新可见性过滤。
+/// 它负责把文件系统变化转换为主窗口可以直接渲染的会话列表。
 /// </summary>
 public sealed class SessionStatusDirectoryWatcher : IDisposable
 {
@@ -16,6 +17,10 @@ public sealed class SessionStatusDirectoryWatcher : IDisposable
     private readonly System.Timers.Timer _debounce;
     private readonly System.Timers.Timer _refreshTimer;
 
+    /// <summary>
+    /// 创建会话目录监听器。
+    /// includeEndedSessions 和 retentionOptions 使用委托读取，是为了让托盘设置修改后立即生效。
+    /// </summary>
     public SessionStatusDirectoryWatcher(
         CodexPaths paths,
         SessionStatusStore store,
@@ -50,11 +55,13 @@ public sealed class SessionStatusDirectoryWatcher : IDisposable
 
     /// <summary>
     /// 文件变化或刷新计时触发后，携带当前可见会话列表发出事件。
+    /// 事件来自后台计时器线程，主窗口会负责切回 WPF UI 线程。
     /// </summary>
     public event Action<IReadOnlyList<CodexSessionStatus>>? SessionsChanged;
 
     private void OnChanged(object sender, FileSystemEventArgs e)
     {
+        // 同一轮文件写入可能产生多个事件，防抖后只刷新一次列表。
         _debounce.Stop();
         _debounce.Start();
     }
@@ -67,6 +74,7 @@ public sealed class SessionStatusDirectoryWatcher : IDisposable
 
     public void Dispose()
     {
+        // 释放监听器和两个计时器，避免应用退出后仍有后台回调。
         _watcher.Dispose();
         _debounce.Dispose();
         _refreshTimer.Dispose();

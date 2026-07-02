@@ -5,6 +5,7 @@ namespace CodexTrafficLight.Tests;
 
 /// <summary>
 /// 使用内存 HTTP 处理器验证更新清单比较。
+/// 这些测试避免真实网络请求，同时覆盖新版、同版、非法清单和请求失败。
 /// </summary>
 public sealed class UpdateCheckerTests
 {

@@ -9,9 +9,11 @@
         Background="Transparent"
         ShowInTaskbar="False"
         Topmost="True">
+    <!-- 根容器承载紧凑红绿灯主体和可选任务抽屉。窗口本身透明，实际背景由内部 Border 绘制。 -->
     <Grid x:Name="Root">
         <StackPanel x:Name="Shell" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top">
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top">
+            <!-- 主灯体：固定宽高，负责显示三灯或单灯模式，同时作为拖动窗口的热区。 -->
             <Border x:Name="Body"
                     Width="80"
                     Height="200"
@@ -28,6 +30,7 @@
                         <RowDefinition Height="28"/>
                     </Grid.RowDefinitions>
 
+                    <!-- 三个灯位结构一致：外层光环、灯槽、灯面。代码中会按状态统一更新颜色和动画。 -->
                     <StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <Grid x:Name="RedLampHost" Width="64" Height="48" Margin="0,1">
                             <Ellipse x:Name="RedRing" Width="44" Height="44" Opacity="0" IsHitTestVisible="False"
@@ -66,6 +69,7 @@
                         </Grid>
                     </StackPanel>
 
+                    <!-- 齿轮按钮在单会话时打开紧凑设置，多会话时优先切换任务抽屉。 -->
                     <Grid Grid.Row="1"
                           Width="30"
                           Height="28"
@@ -92,6 +96,7 @@
                             </Button.Template>
                         </Button>
                     </Grid>
+                    <!-- 多会话徽标显示完成进度，点击时可展开或收起右侧任务抽屉。 -->
                     <Border x:Name="SessionCountBadge"
                             Grid.RowSpan="2"
                             MinWidth="24"
@@ -116,6 +121,7 @@
                 </Grid>
             </Border>
 
+            <!-- 紧凑设置面板只保留高频开关，完整设置放在托盘设置窗口中。 -->
             <Border x:Name="SettingsPanel"
                     Width="100"
                     Height="70"
@@ -139,6 +145,7 @@
                 </StackPanel>
             </Border>
         </StackPanel>
+            <!-- 任务抽屉显示多个 Codex 会话的独立状态，由代码动态生成每一行。 -->
             <Border x:Name="SessionDrawer"
                     Width="252"
                     Height="200"
@@ -150,6 +157,7 @@
                     <DropShadowEffect Color="#111111" BlurRadius="24" ShadowDepth="6" Opacity="0.35"/>
                 </Border.Effect>
                 <Grid>
+                    <!-- 左侧强调条帮助抽屉和主灯体在视觉上保持关联。 -->
                     <Border x:Name="SessionDrawerAccent"
                             Width="3"
                             Height="148"
@@ -158,6 +166,7 @@
                             HorizontalAlignment="Left"
                             VerticalAlignment="Center"/>
                     <StackPanel Margin="10,9,10,9">
+                        <!-- 标题栏说明列表按优先级排序，黄灯任务会排在最前面。 -->
                         <Grid Margin="4,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -175,6 +184,7 @@
                                        FontSize="10"/>
                         </Grid>
                         <Border x:Name="SessionDrawerDivider" Height="1" Background="#22FFFFFF" Margin="0,0,0,1"/>
+                        <!-- 会话列表由 MainWindow.xaml.cs 重建，XAML 中只提供容器。 -->
                         <ScrollViewer x:Name="SessionScrollViewer"
                                       Height="150"
                                       VerticalScrollBarVisibility="Auto"

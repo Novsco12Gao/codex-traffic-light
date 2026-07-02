@@ -5,6 +5,7 @@ namespace CodexTrafficLight.Tests;
 
 /// <summary>
 /// 验证聚合状态文件的往返读写和兜底状态。
+/// 这些测试确保状态文件缺失或损坏时，主程序仍能安全启动。
 /// </summary>
 public sealed class StatusFileStoreTests
 {

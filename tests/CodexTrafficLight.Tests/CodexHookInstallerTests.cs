@@ -5,6 +5,7 @@ namespace CodexTrafficLight.Tests;
 
 /// <summary>
 /// 覆盖 hook 安装行为和生成脚本内容。
+/// 重点保护“不覆盖用户已有 hooks”和“生成脚本包含会话、诊断、自动启动能力”。
 /// </summary>
 public sealed class CodexHookInstallerTests
 {

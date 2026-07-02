@@ -7,6 +7,7 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
         Background="#F5F6F8">
+    <!-- 诊断窗口允许调整大小，方便查看较长的 hook 输入和路径信息。 -->
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -20,6 +21,7 @@
                    Foreground="#1F2228"
                    Margin="0,0,0,12"/>
 
+        <!-- 只读多行文本框保存主窗口生成的完整诊断文本。 -->
         <TextBox x:Name="DiagnosticsTextBox"
                  Grid.Row="1"
                  IsReadOnly="True"
@@ -33,6 +35,7 @@
                  Background="White"
                  BorderBrush="#CED3DB"/>
 
+        <!-- 复制按钮把完整诊断文本写入剪贴板，关闭按钮只退出窗口。 -->
         <StackPanel Grid.Row="2"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"

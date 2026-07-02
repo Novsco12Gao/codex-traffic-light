@@ -5,19 +5,24 @@ namespace CodexTrafficLight.Core.Services;
 
 /// <summary>
 /// 读取并写入聚合红绿灯状态文件。
+/// 这个文件是单会话状态不可用时的兜底来源，也是手动切灯时写入的位置。
 /// </summary>
 public sealed class StatusFileStore
 {
     private static readonly JsonSerializerOptions JsonOptions = JsonOptionsFactory.Create(includeEnumConverter: true);
     private readonly CodexPaths _paths;
 
+    /// <summary>
+    /// 使用统一路径对象定位状态文件，避免各处重复拼接 Codex 目录。
+    /// </summary>
     public StatusFileStore(CodexPaths paths)
     {
         _paths = paths;
     }
 
     /// <summary>
-    /// 读取当前状态；文件缺失或无效时返回安全占位状态。
+    /// 读取当前状态。
+    /// 文件缺失、内容无效或读取失败时返回未知状态，让界面保持可启动。
     /// </summary>
     public CodexStatus Read()
     {
@@ -39,7 +44,8 @@ public sealed class StatusFileStore
     }
 
     /// <summary>
-    /// 以原子方式写入状态，避免文件监听器看到半写入 JSON。
+    /// 以原子方式写入状态。
+    /// 先写临时文件再移动覆盖，避免文件监听器读到半写入的 JSON。
     /// </summary>
     public void Write(CodexStatus status)
     {
@@ -52,6 +58,7 @@ public sealed class StatusFileStore
 
     /// <summary>
     /// 供只知道新状态和事件名的调用方使用的便捷重载。
+    /// 写入时间会在这里统一取当前本地时间。
     /// </summary>
     public void Write(CodexLightState state, string eventName)
     {

@@ -5,6 +5,7 @@ namespace CodexTrafficLight.Tests;
 
 /// <summary>
 /// 验证由状态转换计算出的每日和每周统计。
+/// 这些测试覆盖红灯次数、绿灯次数、红灯持续时长和周汇总边界。
 /// </summary>
 public sealed class StatsStoreTests
 {

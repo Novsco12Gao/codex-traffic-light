@@ -2,6 +2,7 @@ namespace CodexTrafficLight.Tests;
 
 /// <summary>
 /// 验证影响安装路径和快捷方式的安装脚本设置。
+/// 这些断言能防止安装包输出目录、快捷方式和安装后启动配置被误删。
 /// </summary>
 public sealed class InstallerScriptTests
 {

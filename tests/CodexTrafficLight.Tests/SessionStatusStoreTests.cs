@@ -5,6 +5,7 @@ namespace CodexTrafficLight.Tests;
 
 /// <summary>
 /// 验证会话的可见性、保留时间、分组和聚合状态规则。
+/// 这是任务抽屉最核心的测试集，覆盖 CLI 和 VS Code 插件两种来源。
 /// </summary>
 public sealed class SessionStatusStoreTests
 {

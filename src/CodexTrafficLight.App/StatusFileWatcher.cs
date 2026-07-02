@@ -6,6 +6,7 @@ namespace CodexTrafficLight.App;
 
 /// <summary>
 /// 监听聚合状态 JSON 文件，并发出防抖后的状态更新。
+/// 主窗口通过它接收 hook 或手动切灯写入的兜底状态变化。
 /// </summary>
 public sealed class StatusFileWatcher : IDisposable
 {
@@ -13,6 +14,9 @@ public sealed class StatusFileWatcher : IDisposable
     private readonly FileSystemWatcher _watcher;
     private readonly System.Timers.Timer _debounce;
 
+    /// <summary>
+    /// 创建状态文件监听器，并确保 Codex 配置目录存在。
+    /// </summary>
     public StatusFileWatcher(CodexPaths paths, StatusFileStore store)
     {
         _store = store;
@@ -35,11 +39,13 @@ public sealed class StatusFileWatcher : IDisposable
 
     /// <summary>
     /// 稳定的状态文件变化被读取后触发。
+    /// 事件回调来自计时器线程，使用方需要按自己的 UI 线程规则切换。
     /// </summary>
     public event Action<CodexStatus>? StatusChanged;
 
     private void OnChanged(object sender, FileSystemEventArgs e)
     {
+        // 每次文件事件都重置防抖计时，等写入稳定后再读取文件。
         _debounce.Stop();
         _debounce.Start();
     }

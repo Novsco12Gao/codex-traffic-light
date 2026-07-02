@@ -5,6 +5,7 @@ namespace CodexTrafficLight.Core.Services;
 
 /// <summary>
 /// 安装 Codex hook 配置项，以及写入状态文件的 PowerShell 脚本。
+/// 安装过程是幂等的，多次调用只会更新本应用拥有的 hook 项。
 /// </summary>
 public sealed class CodexHookInstaller
 {
@@ -13,6 +14,9 @@ public sealed class CodexHookInstaller
     private const string AppExeName = "CodexTrafficLight.App.exe";
     private readonly CodexPaths _paths;
 
+    /// <summary>
+    /// 使用统一路径对象定位 hooks.json、脚本目录和会话目录。
+    /// </summary>
     public CodexHookInstaller(CodexPaths paths)
     {
         _paths = paths;
@@ -20,6 +24,7 @@ public sealed class CodexHookInstaller
 
     /// <summary>
     /// 创建或更新 hook 配置，并返回 hooks.json 路径。
+    /// 方法会先确保脚本存在，再把 Codex 生命周期事件映射到红黄绿状态。
     /// </summary>
     public string InstallOrUpdate()
     {
@@ -47,6 +52,7 @@ public sealed class CodexHookInstaller
 
     private JsonObject LoadRoot()
     {
+        // 没有 hooks.json 时从空对象开始，后续只写入本应用需要的 hooks 节点。
         if (!File.Exists(_paths.HooksPath))
         {
             return new JsonObject();
@@ -67,6 +73,7 @@ public sealed class CodexHookInstaller
 
     private void AddOwnedEvent(JsonObject hooks, string eventName, string state)
     {
+        // 一个 Codex 事件可以有多个 hook；这里只移除本应用旧项，并保留其它来源的 hook。
         var existing = hooks[eventName] as JsonArray ?? new JsonArray();
         var cleaned = new JsonArray();
 
@@ -85,6 +92,7 @@ public sealed class CodexHookInstaller
 
     private static bool ContainsOwnedCommand(JsonObject entry)
     {
+        // 通过脚本文件名识别本应用写入的命令，而不是依赖数组位置。
         var handlers = entry["hooks"] as JsonArray;
         if (handlers is null)
         {
@@ -115,16 +123,19 @@ public sealed class CodexHookInstaller
 
     private string BuildPowerShellCommand(string state, string eventName)
     {
+        // 生成给 Codex 调用的完整 PowerShell 命令，所有参数都单独加引号。
         return $"powershell -NoProfile -ExecutionPolicy Bypass -File {QuoteArg(_paths.HookScriptPath)} -State {QuoteArg(state)} -EventName {QuoteArg(eventName)}";
     }
 
     private static string QuoteArg(string value)
     {
+        // Codex hooks.json 中的命令参数需要手动转义双引号。
         return "\"" + value.Replace("\"", "\\\"") + "\"";
     }
 
     private void EnsureHookScript()
     {
+        // hook 脚本由应用生成，这样安装包更新后可以同步修复脚本逻辑。
         Directory.CreateDirectory(_paths.HookScriptDirectory);
 
         var appPath = ResolveAppPath();

@@ -504,6 +504,7 @@ xUnit 自动化测试
     private void RenderSessionRows(IReadOnlyList<CodexSessionStatus> sessions)
     {
         // 会话行重建成本很低，比对小列表差异更简单。
+        // 每次刷新都重新生成行，可以避免旧右键菜单或旧颜色状态残留。
         SessionListPanel.Children.Clear();
         foreach (var session in sessions)
         {
@@ -514,6 +515,7 @@ xUnit 自动化测试
     private UIElement CreateSessionRow(CodexSessionStatus session)
     {
         // 已完成会话在抽屉中仍可读，但视觉上会弱化。
+        // 红灯和黄灯保持更高不透明度，方便用户优先注意仍需处理的任务。
         var row = new Grid
         {
             Margin = new Thickness(4, 8, 0, 0),
@@ -525,6 +527,7 @@ xUnit 自动化测试
 
         var dot = new Ellipse
         {
+            // 左侧圆点直接复用灯色配置，让抽屉颜色和主灯颜色保持一致。
             Width = 9,
             Height = 9,
             Fill = new SolidColorBrush(GetLampConfig(session.State).ActiveColor),
@@ -537,6 +540,7 @@ xUnit 自动化测试
         var textPanel = new StackPanel();
         var name = new TextBlock
         {
+            // 会话名可能来自用户提示词、启动器任务名或工作目录名。
             Text = GetSessionDisplayName(session),
             Foreground = GetPrimaryTextBrush(),
             FontWeight = FontWeights.Bold,
@@ -545,6 +549,7 @@ xUnit 自动化测试
         };
         var meta = new TextBlock
         {
+            // 第二行只显示路径尾部和更新时间，避免长路径挤压状态标签。
             Text = $"{GetPathTail(session.WorkingDirectory)} · {FormatAge(session.UpdatedAt)}",
             Foreground = GetSecondaryTextBrush(),
             FontSize = 10,
@@ -558,6 +563,7 @@ xUnit 自动化测试
 
         var label = new Border
         {
+            // 状态标签用弱背景色，不抢主灯视觉优先级。
             CornerRadius = new CornerRadius(9),
             Background = new SolidColorBrush(GetStateBadgeBackground(session.State)),
             Padding = new Thickness(6, 3, 6, 3),
@@ -578,6 +584,7 @@ xUnit 自动化测试
     private ContextMenu CreateSessionRowContextMenu(CodexSessionStatus session)
     {
         // 单会话命令会操作工作目录或隐藏对应会话文件。
+        // 这里给每一行创建独立菜单，确保点击时使用的 session 是当前行的数据。
         var menu = new ContextMenu();
 
         var openItem = new MenuItem { Header = "打开工作目录" };
@@ -598,6 +605,7 @@ xUnit 自动化测试
     private void SetDrawerOpen(bool open, bool suppressAutoOpen)
     {
         // 用户手动关闭后会短暂抑制下一次自动打开，以尊重用户操作。
+        // 自动关闭抽屉时不进入抑制期，避免下一次黄灯提醒失效。
         SessionDrawer.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         if (!open && suppressAutoOpen)
         {
@@ -611,6 +619,7 @@ xUnit 自动化测试
     private static string GetSessionDisplayName(CodexSessionStatus session)
     {
         // 优先使用 hook 提供的名称，否则从工作区推导可读标签。
+        // 这样 VS Code 插件、CLI 启动器和普通命令行都能得到尽量友好的名称。
         if (!string.IsNullOrWhiteSpace(session.DisplayName))
         {
             return session.DisplayName;
@@ -624,6 +633,7 @@ xUnit 自动化测试
     private static string GetPathTail(string path)
     {
         // 只显示父目录和末级目录，让长工作区路径适配紧凑抽屉。
+        // 完整路径仍可通过右键复制获得，列表里优先保证可扫读。
         if (string.IsNullOrWhiteSpace(path))
         {
             return "-";
@@ -637,6 +647,7 @@ xUnit 自动化测试
     private static string FormatAge(DateTimeOffset updatedAt)
     {
         // 相对时间让行内容易扫读，无需完整时间戳。
+        // 如果系统时间早于更新时间，使用零秒兜底，避免显示负数。
         var age = DateTimeOffset.Now - updatedAt;
         if (age.TotalSeconds < 60)
         {
@@ -653,6 +664,7 @@ xUnit 自动化测试
 
     private static string GetStateText(CodexLightState state)
     {
+        // 状态标签保持短词，保证抽屉窄宽度下也不会挤压任务名称。
         return state switch
         {
             CodexLightState.Yellow => "等权限",
@@ -664,6 +676,7 @@ xUnit 自动化测试
 
     private MediaColor GetStateBadgeBackground(CodexLightState state)
     {
+        // 浅色主题下背景透明度稍高，避免标签在白底上太淡。
         if (_settings.Theme != "dark")
         {
             return state switch
@@ -686,6 +699,7 @@ xUnit 自动化测试
 
     private MediaColor GetStateBadgeForeground(CodexLightState state)
     {
+        // 文本颜色按主题分别调校，保证状态标签在浅色和深色下都有足够对比度。
         if (_settings.Theme != "dark")
         {
             return state switch
@@ -723,6 +737,7 @@ xUnit 自动化测试
     private void RebuildTrayMenu()
     {
         // 设置变化后重建菜单文字，使可切换状态反映在文本中。
+        // 这里不复用旧菜单项，避免开关状态改变后菜单标题仍停留在旧文案。
         if (_notifyIcon?.ContextMenuStrip is null)
         {
             return;
@@ -730,6 +745,8 @@ xUnit 自动化测试
 
         var menu = _notifyIcon.ContextMenuStrip;
         menu.Items.Clear();
+
+        // 基础窗口命令和手动切灯命令放在最前面，便于用户快速确认当前程序是否响应。
         menu.Items.Add("显示/隐藏红绿灯", null, (_, _) => ToggleWindowVisibility());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("切换到红灯", null, (_, _) => SetManualState(CodexLightState.Red, "manual"));
@@ -738,15 +755,21 @@ xUnit 自动化测试
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(_settings.Style == "triple" ? "切换到单灯样式" : "切换到三灯样式", null, (_, _) => ToggleStyle());
         menu.Items.Add(new Forms.ToolStripSeparator());
+
+        // hook 相关命令放在一起，方便用户排查 Codex 没有触发红绿灯的问题。
         menu.Items.Add("查看配置路径", null, (_, _) => WpfMessageBox.Show(_paths.HooksPath, "Codex hooks 配置路径"));
         menu.Items.Add("重新写入配置", null, (_, _) => RewriteHooks(showReminder: true));
         menu.Items.Add(new Forms.ToolStripSeparator());
+
+        // 下面这些是持久化开关，标题直接表达下一次点击会执行的动作。
         menu.Items.Add(_settings.Theme == "dark" ? "切换浅色模式" : "切换深色模式", null, (_, _) => ToggleTheme());
         menu.Items.Add(_settings.AutoLaunchOnCodexActivity ? "关闭 Codex 自动打开红绿灯" : "开启 Codex 自动打开红绿灯", null, (_, _) => ToggleAutoLaunchOnCodexActivity());
         menu.Items.Add(_settings.StartWithWindows ? "关闭开机自动启动" : "开启开机自动启动", null, (_, _) => ToggleStartWithWindows());
         menu.Items.Add(_settings.AutoOpenDrawerOnYellow ? "关闭黄灯自动展开" : "开启黄灯自动展开", null, (_, _) => ToggleAutoOpenDrawerOnYellow());
         menu.Items.Add(_settings.ShowEndedSessions ? "隐藏已结束会话" : "显示已结束会话", null, (_, _) => ToggleShowEndedSessions());
         menu.Items.Add("清理已完成会话", null, (_, _) => ClearEndedSessions());
+
+        // 信息类窗口和远程更新检查放在设置前，减少普通使用时误触退出的概率。
         menu.Items.Add("统计", null, (_, _) => ShowStatsWindow());
         menu.Items.Add("诊断", null, (_, _) => ShowDiagnosticsWindow());
         menu.Items.Add("检查更新", null, async (_, _) => await CheckForUpdatesAsync());
@@ -794,6 +817,7 @@ xUnit 自动化测试
     private void ShowYellowReminderIfNeeded(CodexLightState state)
     {
         // 每次切换到黄灯只显示一次通知，静音时除外。
+        // 如果一直停留在黄灯，不重复弹窗，避免用户正在处理权限时被连续打扰。
         if (state != CodexLightState.Yellow)
         {
             _lastReminderState = state;
@@ -814,11 +838,13 @@ xUnit 自动化测试
         var reminderMode = _settings.ReminderMode.ToLowerInvariant();
         if (reminderMode is "silent" or "flash")
         {
+            // 静默模式完全不提醒；只闪灯模式依赖主窗口动画，不额外弹托盘气泡。
             return;
         }
 
         if (reminderMode == "balloon-sound")
         {
+            // 声音只在用户明确选择时播放，避免默认打扰。
             SystemSounds.Exclamation.Play();
         }
 
@@ -831,7 +857,11 @@ xUnit 自动化测试
     {
         // 设置可能影响 hooks、布局、主题和过滤，因此逐项刷新相关界面。
         SaveSettings(settings);
+
+        // 开机启动写入注册表，必须在用户保存设置后才执行。
         StartupRegistrationService.SetEnabled(_settings.StartWithWindows);
+
+        // 自动打开红绿灯的开关写入 hook 脚本读取的设置文件后，重写 hooks 保持脚本最新。
         RewriteHooks(showReminder: false);
         Topmost = _settings.Topmost;
         MuteCheckBox.IsChecked = _settings.Muted;
@@ -928,12 +958,14 @@ xUnit 自动化测试
 
     private void ToggleAutoOpenDrawerOnYellow()
     {
+        // 该设置只影响后续黄灯到来时是否自动展开抽屉，不需要立刻刷新会话列表。
         SaveSettings(_settings with { AutoOpenDrawerOnYellow = !_settings.AutoOpenDrawerOnYellow });
         RebuildTrayMenu();
     }
 
     private void ToggleAutoLaunchOnCodexActivity()
     {
+        // hook 脚本会读取设置文件判断是否启动应用，因此切换后同步重写脚本。
         SaveSettings(_settings with { AutoLaunchOnCodexActivity = !_settings.AutoLaunchOnCodexActivity });
         RewriteHooks(showReminder: false);
         RebuildTrayMenu();
@@ -941,6 +973,7 @@ xUnit 自动化测试
 
     private void ToggleStartWithWindows()
     {
+        // 开机启动是注册表状态，除了保存设置，还要立即同步到 HKCU Run。
         var next = !_settings.StartWithWindows;
         SaveSettings(_settings with { StartWithWindows = next });
         StartupRegistrationService.SetEnabled(next);
@@ -1058,6 +1091,7 @@ xUnit 自动化测试
     private void ShowStatsWindow()
     {
         // 打开统计窗口时计算摘要，确保反映最新统计文件。
+        // 统计窗口只接收结果对象，不直接访问文件，避免窗口承担过多职责。
         var window = new StatsWindow(_statsStore.GetTodaySummary(), _statsStore.GetCurrentWeekSummary())
         {
             Owner = this
@@ -1067,6 +1101,7 @@ xUnit 自动化测试
 
     private void ShowDiagnosticsWindow()
     {
+        // 诊断文本在打开窗口前一次性生成，复制时能保留同一份现场快照。
         var window = new DiagnosticsWindow(BuildDiagnosticsText())
         {
             Owner = this
@@ -1076,6 +1111,7 @@ xUnit 自动化测试
 
     private string BuildDiagnosticsText()
     {
+        // 使用纯文本而不是复杂表格，方便用户直接复制到聊天或 issue 中。
         var builder = new StringBuilder();
         builder.AppendLine("Codex 红绿灯诊断");
         builder.AppendLine($"版本: {GetCurrentVersion()}");
@@ -1112,6 +1148,7 @@ xUnit 自动化测试
         builder.AppendLine("最近 hook 诊断");
         if (File.Exists(latestDiagnosticsPath))
         {
+            // hook 脚本写入的是原始 JSON，直接附在诊断文本里，便于排查来源进程和输入。
             builder.AppendLine(File.ReadAllText(latestDiagnosticsPath));
         }
         else
@@ -1125,6 +1162,7 @@ xUnit 自动化测试
     private async Task CheckForUpdatesAsync()
     {
         // HTTP 检查使用独立超时运行，同时保持界面响应。
+        // 托盘菜单在异步回调后可能失焦，因此 finally 中会把焦点交回菜单。
         var menu = _notifyIcon?.ContextMenuStrip;
         var previousCursor = Cursor;
         Cursor = System.Windows.Input.Cursors.Wait;
@@ -1149,6 +1187,7 @@ xUnit 自动化测试
             var notes = result.Notes.Count == 0
                 ? "暂无更新说明。"
                 : string.Join("\n", result.Notes.Select(note => "- " + note));
+            // 只打开下载页面，不自动下载或替换程序，避免误升级。
             var message = $"发现新版本：{result.LatestVersion}\n\n更新内容：\n{notes}\n\n是否打开 GitHub 下载页面？";
             if (WpfMessageBox.Show(message, "检查更新", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
             {
@@ -1165,18 +1204,21 @@ xUnit 自动化测试
     private static string GetCurrentVersion()
     {
         // 程序集版本来自项目文件；兜底值用于处理调试异常情况。
+        // ToString(3) 保持和 version.json 中的三段版本号一致。
         return Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.3";
     }
 
     private static void OpenUrl(string url)
     {
         // shell 执行会把 HTTPS 打开交给用户默认浏览器。
+        // 不指定浏览器，避免在不同 Windows 环境下产生兼容问题。
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     private void ApplySavedWindowPosition()
     {
         // 恢复上次窗口位置；没有记录时默认放在工作区右上附近。
+        // 位置只保存用户拖动后的坐标，不参与窗口尺寸计算。
         if (_settings.WindowLeft.HasValue && _settings.WindowTop.HasValue)
         {
             Left = _settings.WindowLeft.Value;
@@ -1191,6 +1233,7 @@ xUnit 自动化测试
     private void SaveSettings(AppSettings settings)
     {
         // 持久化前先更新内存快照，保证后续界面读取一致。
+        // 设置存储为空只会发生在极早期初始化阶段，这里用空传播保持安全。
         _settings = settings;
         _settingsStore?.Save(_settings);
     }
@@ -1198,6 +1241,7 @@ xUnit 自动化测试
     private void UpdateWindowHeight()
     {
         // 宽高按固定格式计算，避免托盘尺寸界面随内容漂移。
+        // 抽屉展开时增加宽度，设置面板展开时增加高度。
         var panelOpen = SettingsPanel.Visibility == Visibility.Visible;
         Width = SessionDrawer.Visibility == Visibility.Visible ? 374 : 100;
         var baseHeight = _settings.Style == "single"
@@ -1211,12 +1255,14 @@ xUnit 自动化测试
     private void Body_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         // 无边框窗口使用主体区域作为拖拽把手。
+        // WPF 的 DragMove 会自动处理拖动期间的窗口位置更新。
         DragMove();
     }
 
     private void GearButton_Click(object sender, RoutedEventArgs e)
     {
         // 存在多个会话时，齿轮按钮优先切换抽屉而不是设置面板。
+        // 单会话或无会话时，齿轮仍作为紧凑设置入口使用。
         if (_visibleSessions.Count > 1)
         {
             SetDrawerOpen(SessionDrawer.Visibility != Visibility.Visible, suppressAutoOpen: true);
@@ -1232,6 +1278,7 @@ xUnit 自动化测试
     private void SessionCountBadge_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         // 防止点击徽标时同时触发窗口拖拽处理。
+        // 徽标只在多会话时有意义，因此单会话时不做额外动作。
         e.Handled = true;
         if (_visibleSessions.Count > 1)
         {
@@ -1242,12 +1289,14 @@ xUnit 自动化测试
     private void MuteCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         // 内联复选框变化会立即持久化。
+        // 它只影响提醒声音和气泡，不改变当前灯色。
         SaveSettings(_settings with { Muted = MuteCheckBox.IsChecked == true });
     }
 
     private void ThemeCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         // 紧凑面板与托盘主题命令保持一致。
+        // 切换后同时刷新托盘菜单文字，保证下一次点击动作正确。
         var theme = ThemeCheckBox.IsChecked == true ? "dark" : "light";
         SaveSettings(_settings with { Theme = theme });
         ApplyTheme(theme);

@@ -7,6 +7,7 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#F5F6F8">
+    <!-- 设置窗口使用三行布局：标题、可滚动内容、底部操作按钮。 -->
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -22,6 +23,7 @@
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
+                <!-- 外观设置控制主窗口显示方式、主题和是否置顶。 -->
                 <TextBlock Text="外观" FontWeight="Bold" Foreground="#3A3E46" Margin="0,0,0,8"/>
                 <Grid Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
@@ -50,6 +52,7 @@
                     <CheckBox x:Name="TopmostCheckBox" Grid.Row="2" Grid.Column="1" Content="窗口置顶" VerticalAlignment="Center"/>
                 </Grid>
 
+                <!-- 灯效设置只影响动画表现，不改变红黄绿状态含义。 -->
                 <TextBlock Text="灯效" FontWeight="Bold" Foreground="#3A3E46" Margin="0,0,0,8"/>
                 <Grid Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
@@ -75,6 +78,7 @@
                     </ComboBox>
                 </Grid>
 
+                <!-- 任务设置控制 hook 自动启动、开机启动、抽屉和提醒总开关。 -->
                 <TextBlock Text="任务" FontWeight="Bold" Foreground="#3A3E46" Margin="0,0,0,8"/>
                 <StackPanel Margin="0,0,0,14">
                     <CheckBox x:Name="AutoLaunchCheckBox" Content="Codex 活动时自动打开红绿灯" Margin="0,0,0,8"/>
@@ -84,6 +88,7 @@
                     <CheckBox x:Name="MutedCheckBox" Content="静音"/>
                 </StackPanel>
 
+                <!-- 黄灯提醒模式决定等待权限时是否弹气泡、播放声音或只依赖灯效。 -->
                 <TextBlock Text="提醒" FontWeight="Bold" Foreground="#3A3E46" Margin="0,0,0,8"/>
                 <Grid Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
@@ -99,6 +104,7 @@
                     </ComboBox>
                 </Grid>
 
+                <!-- 会话保留设置使用正整数输入框，保存时由代码做无效输入兜底。 -->
                 <TextBlock Text="会话保留" FontWeight="Bold" Foreground="#3A3E46" Margin="0,0,0,8"/>
                 <Grid Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
@@ -137,6 +143,7 @@
             </StackPanel>
         </ScrollViewer>
 
+        <!-- 保存按钮返回 DialogResult，取消按钮直接关闭且不应用设置。 -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
             <Button Width="78" Height="30" Margin="0,0,8,0" Content="取消" IsCancel="True"/>
             <Button Width="78" Height="30" Content="保存" IsDefault="True" Click="SaveButton_Click"/>

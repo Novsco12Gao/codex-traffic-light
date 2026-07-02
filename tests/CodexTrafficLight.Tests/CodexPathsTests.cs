@@ -4,6 +4,7 @@ namespace CodexTrafficLight.Tests;
 
 /// <summary>
 /// 验证显式测试主目录和 CODEX_HOME 的路径解析。
+/// 路径解析正确时，应用才不会误写到错误的 Codex 配置目录。
 /// </summary>
 public sealed class CodexPathsTests
 {
